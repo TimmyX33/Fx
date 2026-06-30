@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Journal Calendar (Google Sheets Sync)</title>
+    <title>Trading Journal Calendar (Google Sheets Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -23,11 +23,20 @@
 <body class="antialiased">
 
     <div class="min-h-screen flex flex-col">
-        <!-- HEADER NAVBAR -->
         <header class="bg-[#161b22] border-b border-gray-800 px-4 py-3">
             <div class="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-2">
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-2 flex-wrap gap-y-2">
                     <div class="bg-amber-500 text-black font-black px-2.5 py-1 rounded text-xs uppercase tracking-wider">FOR PANDORA</div>
+                    
+                    <div class="flex items-center bg-[#21262d] rounded-lg p-1 border border-gray-700">
+                        <i class="fa-solid fa-wallet text-gray-500 text-xs ml-1.5 mr-0.5"></i>
+                        <select id="account-select" class="bg-transparent text-amber-400 font-bold px-2 py-0.5 outline-none cursor-pointer text-xs md:text-sm">
+                            <option value="port_1">พอร์ตที่ 1</option>
+                            <option value="port_2">พอร์ตที่ 2</option>
+                            <option value="port_3">พอร์ตที่ 3</option>
+                        </select>
+                    </div>
+
                     <div class="flex items-center space-x-1 bg-[#21262d] rounded-lg p-1 border border-gray-700">
                         <select id="month-select" class="bg-transparent text-amber-400 font-semibold px-2 py-0.5 outline-none cursor-pointer text-xs md:text-sm">
                             <option value="0">มกราคม</option><option value="1">กุมภาพันธ์</option><option value="2">มีนาคม</option><option value="3">เมษายน</option><option value="4">พฤษภาคม</option><option value="5">มิถุนายน</option><option value="6">กรกฎาคม</option><option value="7">สิงหาคม</option><option value="8">กันยายน</option><option value="9">ตุลาคม</option><option value="10">พฤศจิกายน</option><option value="11">ธันวาคม</option>
@@ -38,12 +47,11 @@
                     </div>
                 </div>
                 <div id="sync-status" class="text-[11px] text-gray-400">
-                    <i class="fa-solid fa-rotate mr-1 animate-spin"></i> กำลังโหลดข้อมูลจาก Google Sheets...
+                    <i class="fa-solid fa-rotate mr-1 animate-spin"></i> กำลังโหลดข้อมูล...
                 </div>
             </div>
         </header>
 
-        <!-- MAIN CONTENT -->
         <main class="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full flex flex-col justify-start">
             <div class="text-center my-4 md:my-6">
                 <h2 class="text-gray-400 text-xs md:text-sm font-medium uppercase tracking-wider">Monthly P/L</h2>
@@ -60,14 +68,15 @@
     </div>
 
     <script>
+        const accountSelect = document.getElementById('account-select');
         const monthSelect = document.getElementById('month-select');
         const yearSelect = document.getElementById('year-select');
         const calendarGrid = document.getElementById('calendar-grid');
         const monthlyTotalEl = document.getElementById('monthly-total');
         const syncStatusEl = document.getElementById('sync-status');
 
-        // ⚠️ เอาลิงก์ Web App URL ที่ก๊อปปี้มาจาก Google Sheets สเต็ปที่ 1 มาวางตรงนี้แทนคำว่า 'ใส่ลิงก์ของคุณตรงนี้'
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxT_E6gldrjwIaZYx7x0CLO1hfVVVAIeDKR8svp5W4uV9lCxZMc4_51OULNxwl1UvTlww/exec';
+        // ⚠️ บรรทัดที่ 113: เอาลิงก์ Web App อันใหม่มาวางแทนคำในเครื่องหมายคำพูดเดี่ยวนี้ครับ
+        const SCRIPT_URL = 'ใส่ลิงก์ของคุณตรงนี้';
 
         const dayNames = ["Sunday (อา.)", "Monday (จ.)", "Tuesday (อ.)", "Wednesday (พ.)", "Thursday (พฤ.)", "Friday (ศ.)", "Saturday (ส.)"];
         let globalSavedData = {};
@@ -76,21 +85,22 @@
         monthSelect.value = today.getMonth();
         yearSelect.value = today.getFullYear();
 
-        // ดึงข้อมูลทั้งหมดจาก Google Sheets มาเก็บไว้ในเครื่องก่อนรันตาราง
         async function loadSheetData() {
             syncStatusEl.innerHTML = `<i class="fa-solid fa-rotate mr-1 animate-spin"></i> กำลังซิงค์ข้อมูล...`;
             try {
-                const response = await fetch(SCRIPT_URL);
+                // บังคับไม่ให้แคชไฟล์เก่า
+                const response = await fetch(`${SCRIPT_URL}?_=${new Date().getTime()}`);
                 globalSavedData = await response.json();
-                syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-400 mr-1"></i> เชื่อมต่อ Google Sheets สำเร็จ`;
+                syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-400 mr-1"></i> เชื่อมต่อ Cloud สำเร็จ`;
             } catch (err) {
+                console.error(err);
                 syncStatusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400 mr-1"></i> โหลดข้อมูลล้มเหลว`;
             }
             renderCalendar();
         }
 
         function getStorageKey(day) {
-            return `day_${yearSelect.value}_${monthSelect.value}_${day}`;
+            return `${accountSelect.value}_day_${yearSelect.value}_${monthSelect.value}_${day}`;
         }
 
         function renderCalendar() {
@@ -118,7 +128,7 @@
                         if (d === 6) dayColorClass = "text-gray-400";     
 
                         const key = getStorageKey(dayCounter);
-                        const saved = globalSavedData[key] || { pl: "0",: "0" };
+                        const saved = globalSavedData[key] || { pl: "0", trades: "0" };
 
                         weekHtml += `
                             <div class="calendar-box neutral-mode day-box border-b border-gray-800/40 md:border-b-0" data-week="${weekCounter}" data-day="${dayCounter}">
@@ -150,7 +160,7 @@
 
             calendarGrid.innerHTML = htmlGrid;
             setupInputListeners();
-            calculateTotals(false); // รอบแรกแค่คำนวณโชว์สี ไม่ต้องเซฟซ้ำ
+            calculateTotals(false);
         }
 
         function calculateTotals(shouldSave = true) {
@@ -179,14 +189,12 @@
                 else if (plValue < 0) box.classList.add('loss-mode');
                 else box.classList.add('neutral-mode');
 
-                // บันทึกข้อมูลเฉพาะตอนพิมพ์มือจริง ๆ
                 if (shouldSave) {
                     const key = getStorageKey(day);
                     globalSavedData[key] = { pl: plText, trades: tradeText };
                 }
             });
 
-            // แสดงยอดรวมสัปดาห์และเดือน
             for (let w in weeklyTotals) {
                 const totalEl = document.getElementById(`week-${w}-total`);
                 const tradeEl = document.getElementById(`week-${w}-trades`);
@@ -201,7 +209,6 @@
             monthlyTotalEl.className = 'text-2xl md:text-3xl font-bold mt-1 ' + (monthlyTotal > 0 ? 'profit-text' : monthlyTotal < 0 ? 'loss-text' : '');
         }
 
-        // ดักจับจังหวะการพิมพ์เพื่อส่งข้อมูลไปอัปเดตบน Google Sheets ทันที แบบ Real-time
         let saveTimeout;
         function setupInputListeners() {
             const dayBoxes = document.querySelectorAll('.day-box');
@@ -213,19 +220,19 @@
                 const onInput = () => {
                     calculateTotals(true);
                     clearTimeout(saveTimeout);
-                    syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-arrow-up mr-1 animate-pulse text-amber-400"></i> กำลังบันทึกลง Cloud...`;
+                    syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-arrow-up mr-1 animate-pulse text-amber-400"></i> กำลังบันทึก...`;
                     
-                    // หน่วงเวลาเซฟ 1 วินาทีหลังจากหยุดพิมพ์ เพื่อป้องกันไม่ให้ยิงข้อมูลถี่เกินไป
                     saveTimeout = setTimeout(async () => {
                         const key = getStorageKey(day);
                         try {
                             await fetch(SCRIPT_URL, {
                                 method: "POST",
+                                mode: "no-cors", // แก้ปัญหาบล็อกเบราว์เซอร์ CORS ตอนส่งข้อมูลเซฟ
                                 body: JSON.stringify({ key: key, pl: plEl.innerText.trim(), trades: tradeEl.innerText.trim() })
                             });
-                            syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-400 mr-1"></i> บันทึกข้อมูลสำเร็จ`;
+                            syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-400 mr-1"></i> บันทึกสำเร็จ`;
                         } catch (err) {
-                            syncStatusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400 mr-1"></i> เซฟล้มเหลว`;
+                            syncStatusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400 mr-1"></i> บันทึกล้มเหลว`;
                         }
                     }, 1000);
                 };
@@ -235,10 +242,10 @@
             });
         }
 
+        accountSelect.addEventListener('change', renderCalendar);
         monthSelect.addEventListener('change', loadSheetData);
         yearSelect.addEventListener('change', loadSheetData);
 
-        // รันครั้งแรกด้วยการดึงข้อมูลจาก Sheets
         loadSheetData();
     </script>
 </body>
