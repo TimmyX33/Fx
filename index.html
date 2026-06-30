@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Journal Calendar (Google Sheets Sync)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { background-color: #0d1117; color: #e6edf3; font-family: system-ui, -apple-system, sans-serif; }
+        @media (min-width: 768px) { .calendar-grid-layout { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) 130px; } }
+        @media (max-width: 767px) { .calendar-grid-layout { display: flex; flex-direction: column; } .mobile-hide-blank { display: none !important; } }
+        .calendar-box { padding: 12px; min-height: 100px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s; }
+        [contenteditable="true"]:focus { outline: 2px solid #f59e0b; background-color: rgba(255, 255, 255, 0.08); border-radius: 4px; }
+        .profit-mode { background-color: rgba(6, 78, 59, 0.3) !important; color: #34d399 !important; }
+        .profit-text { color: #34d399 !important; }
+        .loss-mode { background-color: rgba(159, 18, 42, 0.3) !important; color: #f87171 !important; }
+        .loss-text { color: #f87171 !important; }
+        .neutral-mode { background-color: rgba(22, 27, 34, 0.5) !important; color: #8b949e !important; }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="min-h-screen flex flex-col">
+        <!-- HEADER NAVBAR -->
+        <header class="bg-[#161b22] border-b border-gray-800 px-4 py-3">
+            <div class="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-amber-500 text-black font-black px-2.5 py-1 rounded text-xs uppercase tracking-wider">Topstep X</div>
+                    <div class="flex items-center space-x-1 bg-[#21262d] rounded-lg p-1 border border-gray-700">
+                        <select id="month-select" class="bg-transparent text-amber-400 font-semibold px-2 py-0.5 outline-none cursor-pointer text-xs md:text-sm">
+                            <option value="0">มกราคม</option><option value="1">กุมภาพันธ์</option><option value="2">มีนาคม</option><option value="3">เมษายน</option><option value="4">พฤษภาคม</option><option value="5">มิถุนายน</option><option value="6">กรกฎาคม</option><option value="7">สิงหาคม</option><option value="8">กันยายน</option><option value="9">ตุลาคม</option><option value="10">พฤศจิกายน</option><option value="11">ธันวาคม</option>
+                        </select>
+                        <select id="year-select" class="bg-transparent text-amber-400 font-semibold px-2 py-0.5 outline-none cursor-pointer text-xs md:text-sm">
+                            <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option><option value="2028">2028</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="sync-status" class="text-[11px] text-gray-400">
+                    <i class="fa-solid fa-rotate mr-1 animate-spin"></i> กำลังโหลดข้อมูลจาก Google Sheets...
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full flex flex-col justify-start">
+            <div class="text-center my-4 md:my-6">
+                <h2 class="text-gray-400 text-xs md:text-sm font-medium uppercase tracking-wider">Monthly P/L</h2>
+                <p id="monthly-total" class="text-2xl md:text-3xl font-bold mt-1">+$0.00</p>
+            </div>
+
+            <div class="bg-[#161b22] border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
+                <div class="calendar-grid-layout text-center bg-[#21262d]/50 text-gray-400 font-semibold py-3 text-sm hidden md:grid">
+                    <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div class="text-gray-500">Sa</div><div class="text-amber-500">Weekly Total</div>
+                </div>
+                <div id="calendar-grid" class="calendar-grid-layout divide-y md:divide-x md:divide-y divide-gray-800 border-t border-gray-800"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect = document.getElementById('year-select');
+        const calendarGrid = document.getElementById('calendar-grid');
+        const monthlyTotalEl = document.getElementById('monthly-total');
+        const syncStatusEl = document.getElementById('sync-status');
+
+        // ⚠️ เอาลิงก์ Web App URL ที่ก๊อปปี้มาจาก Google Sheets สเต็ปที่ 1 มาวางตรงนี้แทนคำว่า 'ใส่ลิงก์ของคุณตรงนี้'
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxT_E6gldrjwIaZYx7x0CLO1hfVVVAIeDKR8svp5W4uV9lCxZMc4_51OULNxwl1UvTlww/exec';
+
+        const dayNames = ["Sunday (อา.)", "Monday (จ.)", "Tuesday (อ.)", "Wednesday (พ.)", "Thursday (พฤ.)", "Friday (ศ.)", "Saturday (ส.)"];
+        let globalSavedData = {};
+
+        const today = new Date();
+        monthSelect.value = today.getMonth();
+        yearSelect.value = today.getFullYear();
+
+        // ดึงข้อมูลทั้งหมดจาก Google Sheets มาเก็บไว้ในเครื่องก่อนรันตาราง
+        async function loadSheetData() {
+            syncStatusEl.innerHTML = `<i class="fa-solid fa-rotate mr-1 animate-spin"></i> กำลังซิงค์ข้อมูล...`;
+            try {
+                const response = await fetch(SCRIPT_URL);
+                globalSavedData = await response.json();
+                syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-400 mr-1"></i> เชื่อมต่อ Google Sheets สำเร็จ`;
+            } catch (err) {
+                syncStatusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400 mr-1"></i> โหลดข้อมูลล้มเหลว`;
+            }
+            renderCalendar();
+        }
+
+        function getStorageKey(day) {
+            return `day_${yearSelect.value}_${monthSelect.value}_${day}`;
+        }
+
+        function renderCalendar() {
+            const year = parseInt(yearSelect.value);
+            const month = parseInt(monthSelect.value);
+            const firstDayIndex = new Date(year, month, 1).getDay(); 
+            const numberOfDays = new Date(year, month + 1, 0).getDate();
+
+            calendarGrid.innerHTML = ''; 
+            let dayCounter = 1;
+            let weekCounter = 1;
+            let htmlGrid = '';
+
+            for (let i = 0; i < 6; i++) {
+                let weekHtml = '';
+                let hasDaysInWeek = false;
+
+                for (let d = 0; d <= 6; d++) {
+                    if ((i === 0 && d < firstDayIndex) || dayCounter > numberOfDays) {
+                        weekHtml += `<div class="p-4 bg-[#0d1117]/10 min-h-[100px] mobile-hide-blank hidden md:block"></div>`;
+                    } else {
+                        hasDaysInWeek = true;
+                        let dayColorClass = "text-gray-500";
+                        if (d === 0) dayColorClass = "text-rose-500/80"; 
+                        if (d === 6) dayColorClass = "text-gray-400";     
+
+                        const key = getStorageKey(dayCounter);
+                        const saved = globalSavedData[key] || { pl: "0", trades: "0" };
+
+                        weekHtml += `
+                            <div class="calendar-box neutral-mode day-box border-b border-gray-800/40 md:border-b-0" data-week="${weekCounter}" data-day="${dayCounter}">
+                                <div class="flex justify-between items-center w-full">
+                                    <span class="${dayColorClass} text-xs font-bold">${dayCounter}</span>
+                                    <span class="text-[10px] uppercase font-semibold text-gray-500 md:hidden">${dayNames[d]}</span>
+                                </div>
+                                <div class="text-center py-1">
+                                    <div class="font-bold text-base md:text-lg pl-value" contenteditable="true" inputmode="decimal">${saved.pl}</div>
+                                    <div class="text-gray-500 text-[11px]"><span class="trade-value" contenteditable="true" inputmode="numeric">${saved.trades}</span> trades</div>
+                                </div>
+                            </div>`;
+                        dayCounter++;
+                    }
+                }
+
+                weekHtml += `
+                    <div class="p-4 min-h-[100px] bg-[#1f242c] flex flex-row md:flex-col justify-between items-center md:items-stretch border-l-0 md:border-l-2 border-t md:border-t-0 border-amber-500/50">
+                        <span class="text-amber-400 text-xs font-black uppercase">Week ${weekCounter}</span>
+                        <div class="text-right md:text-center">
+                            <div id="week-${weekCounter}-total" class="font-black text-base md:text-lg">$0.00</div>
+                            <div id="week-${weekCounter}-trades" class="text-gray-400 text-[11px]">0 trades</div>
+                        </div>
+                    </div>`;
+
+                if (hasDaysInWeek) { htmlGrid += weekHtml; weekCounter++; }
+                if (dayCounter > numberOfDays) break;
+            }
+
+            calendarGrid.innerHTML = htmlGrid;
+            setupInputListeners();
+            calculateTotals(false); // รอบแรกแค่คำนวณโชว์สี ไม่ต้องเซฟซ้ำ
+        }
+
+        function calculateTotals(shouldSave = true) {
+            let monthlyTotal = 0;
+            let weeklyTotals = {};
+            let weeklyTrades = {};
+
+            const dayBoxes = document.querySelectorAll('.day-box');
+
+            dayBoxes.forEach(box => {
+                const week = box.getAttribute('data-week');
+                const day = box.getAttribute('data-day');
+                const plText = box.querySelector('.pl-value').innerText.trim();
+                const tradeText = box.querySelector('.trade-value').innerText.trim();
+
+                const plValue = parseFloat(plText) || 0;
+                const tradeValue = parseInt(tradeText) || 0;
+
+                if (!weeklyTotals[week]) { weeklyTotals[week] = 0; weeklyTrades[week] = 0; }
+                weeklyTotals[week] += plValue;
+                weeklyTrades[week] += tradeValue;
+                monthlyTotal += plValue;
+
+                box.classList.remove('profit-mode', 'loss-mode', 'neutral-mode');
+                if (plValue > 0) box.classList.add('profit-mode');
+                else if (plValue < 0) box.classList.add('loss-mode');
+                else box.classList.add('neutral-mode');
+
+                // บันทึกข้อมูลเฉพาะตอนพิมพ์มือจริง ๆ
+                if (shouldSave) {
+                    const key = getStorageKey(day);
+                    globalSavedData[key] = { pl: plText, trades: tradeText };
+                }
+            });
+
+            // แสดงยอดรวมสัปดาห์และเดือน
+            for (let w in weeklyTotals) {
+                const totalEl = document.getElementById(`week-${w}-total`);
+                const tradeEl = document.getElementById(`week-${w}-trades`);
+                if (totalEl) {
+                    totalEl.innerText = (weeklyTotals[w] >= 0 ? '+$' : '-$') + Math.abs(weeklyTotals[w]).toLocaleString('en-US', {minimumFractionDigits: 2});
+                    totalEl.className = 'font-black text-base md:text-lg ' + (weeklyTotals[w] > 0 ? 'profit-text' : weeklyTotals[w] < 0 ? 'loss-text' : '');
+                }
+                if (tradeEl) tradeEl.innerText = weeklyTrades[w] + ' trades';
+            }
+
+            monthlyTotalEl.innerText = (monthlyTotal >= 0 ? '+$' : '-$') + Math.abs(monthlyTotal).toLocaleString('en-US', {minimumFractionDigits: 2});
+            monthlyTotalEl.className = 'text-2xl md:text-3xl font-bold mt-1 ' + (monthlyTotal > 0 ? 'profit-text' : monthlyTotal < 0 ? 'loss-text' : '');
+        }
+
+        // ดักจับจังหวะการพิมพ์เพื่อส่งข้อมูลไปอัปเดตบน Google Sheets ทันที แบบ Real-time
+        let saveTimeout;
+        function setupInputListeners() {
+            const dayBoxes = document.querySelectorAll('.day-box');
+            dayBoxes.forEach(box => {
+                const day = box.getAttribute('data-day');
+                const plEl = box.querySelector('.pl-value');
+                const tradeEl = box.querySelector('.trade-value');
+
+                const onInput = () => {
+                    calculateTotals(true);
+                    clearTimeout(saveTimeout);
+                    syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-arrow-up mr-1 animate-pulse text-amber-400"></i> กำลังบันทึกลง Cloud...`;
+                    
+                    // หน่วงเวลาเซฟ 1 วินาทีหลังจากหยุดพิมพ์ เพื่อป้องกันไม่ให้ยิงข้อมูลถี่เกินไป
+                    saveTimeout = setTimeout(async () => {
+                        const key = getStorageKey(day);
+                        try {
+                            await fetch(SCRIPT_URL, {
+                                method: "POST",
+                                body: JSON.stringify({ key: key, pl: plEl.innerText.trim(), trades: tradeEl.innerText.trim() })
+                            });
+                            syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-400 mr-1"></i> บันทึกข้อมูลสำเร็จ`;
+                        } catch (err) {
+                            syncStatusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400 mr-1"></i> เซฟล้มเหลว`;
+                        }
+                    }, 1000);
+                };
+
+                plEl.addEventListener('input', onInput);
+                tradeEl.addEventListener('input', onInput);
+            });
+        }
+
+        monthSelect.addEventListener('change', loadSheetData);
+        yearSelect.addEventListener('change', loadSheetData);
+
+        // รันครั้งแรกด้วยการดึงข้อมูลจาก Sheets
+        loadSheetData();
+    </script>
+</body>
+</html>
