@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Journal Calendar (Google Sheets Fix)</title>
+    <title>Trading Journal Calendar (Fast Load Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -47,7 +47,7 @@
                     </div>
                 </div>
                 <div id="sync-status" class="text-[11px] text-gray-400">
-                    <i class="fa-solid fa-rotate mr-1 animate-spin"></i> กำลังโหลดข้อมูล... 
+                    <i class="fa-solid fa-rotate mr-1 animate-spin"></i> กำลังเตรียมระบบปฏิทิน...
                 </div>
             </div>
         </header>
@@ -75,8 +75,8 @@
         const monthlyTotalEl = document.getElementById('monthly-total');
         const syncStatusEl = document.getElementById('sync-status');
 
-        // ⚠️ บรรทัดที่ 113: เอาลิงก์ Web App อันใหม่มาวางแทนคำในเครื่องหมายคำพูดเดี่ยวนี้ครับ
-        const SCRIPT_URL = 'ใส่ลิงก์ของคุณตรงนี้';
+        // ⚠️ บรรทัดที่ 113: ตรวจสอบและวางลิงก์ Web App (URL) ตัวล่าสุดของคุณจาก Google Sheets ในเครื่องหมายคำพูดเดี่ยวนี้ครับ
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxT_E6gldrjwIaZYx7x0CLO1hfVVVAIeDKR8svp5W4uV9lCxZMc4_51OULNxwl1UvTlww/exec';
 
         const dayNames = ["Sunday (อา.)", "Monday (จ.)", "Tuesday (อ.)", "Wednesday (พ.)", "Thursday (พฤ.)", "Friday (ศ.)", "Saturday (ส.)"];
         let globalSavedData = {};
@@ -86,15 +86,20 @@
         yearSelect.value = today.getFullYear();
 
         async function loadSheetData() {
-            syncStatusEl.innerHTML = `<i class="fa-solid fa-rotate mr-1 animate-spin"></i> กำลังซิงค์ข้อมูล...`;
+            if (!SCRIPT_URL || SCRIPT_URL === 'ใส่ลิงก์ของคุณตรงนี้') {
+                syncStatusEl.innerHTML = `<i class="fa-solid fa-circle-info text-amber-400 mr-1"></i> ยังไม่ได้ใส่ลิงก์สคริปต์ Google Sheets`;
+                renderCalendar();
+                return;
+            }
+            
+            syncStatusEl.innerHTML = `<i class="fa-solid fa-rotate mr-1 animate-spin text-amber-400"></i> กำลังดึงข้อมูลจาก Cloud...`;
             try {
-                // บังคับไม่ให้แคชไฟล์เก่า
                 const response = await fetch(`${SCRIPT_URL}?_=${new Date().getTime()}`);
                 globalSavedData = await response.json();
                 syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-400 mr-1"></i> เชื่อมต่อ Cloud สำเร็จ`;
             } catch (err) {
                 console.error(err);
-                syncStatusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400 mr-1"></i> โหลดข้อมูลล้มเหลว`;
+                syncStatusEl.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400 mr-1"></i> โหลดข้อมูลล้มเหลว (ลองเช็กสิทธิ์แอป)`;
             }
             renderCalendar();
         }
@@ -227,7 +232,7 @@
                         try {
                             await fetch(SCRIPT_URL, {
                                 method: "POST",
-                                mode: "no-cors", // แก้ปัญหาบล็อกเบราว์เซอร์ CORS ตอนส่งข้อมูลเซฟ
+                                mode: "no-cors",
                                 body: JSON.stringify({ key: key, pl: plEl.innerText.trim(), trades: tradeEl.innerText.trim() })
                             });
                             syncStatusEl.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-400 mr-1"></i> บันทึกสำเร็จ`;
@@ -246,7 +251,11 @@
         monthSelect.addEventListener('change', loadSheetData);
         yearSelect.addEventListener('change', loadSheetData);
 
-        loadSheetData();
+        // แก้ไขจุดสำคัญ: บังคับให้โหลดโครงสร้างตารางปฏิทินขึ้นมาก่อนทันที จากนั้นค่อยสั่งให้แอปซิงค์ข้อมูลจากคลาวด์ตามมาแบบคู่ขนานเพื่อไม่ให้ระบบค้าง
+        window.addEventListener('DOMContentLoaded', () => {
+            renderCalendar();
+            loadSheetData();
+        });
     </script>
 </body>
 </html>
